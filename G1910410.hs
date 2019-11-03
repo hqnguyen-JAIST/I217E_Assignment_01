@@ -137,14 +137,23 @@ breathFirstSearch visited = dupRm [
 -- | @arg: (Number of rows, Number of columns, Live cells)
 type State = (Int, Int, [CellPosition])
 
+-- | @param nrows: Number of rows of gameboard
+-- | @param ncols: Number of columns of gameboard
+-- | @param (i, j): The position of a cell
+-- | @return: True if the cell is in valid position
+heuristicCellValidate :: Int -> Int -> CellPosition -> Bool
+heuristicCellValidate nrows ncols (i, j) = i >= (-100) && i < (nrows + 100) && j >= (-100) && j < (ncols + 100)
+
 -- | @param (nrows, ncols, lives): The current state
 -- | @return: The state after this state
 nextState :: State -> State
 nextState (nrows, ncols, lives) = (
         nrows, 
         ncols,
-        (filter (\u -> elem (length [v | v <- adjacentCell u, elem v lives]) [2, 3]) lives) ++
-        (filter (\u -> length [v | v <- adjacentCell u, elem v lives] == 3) (breathFirstSearch lives))
+        filter (\u -> heuristicCellValidate nrows ncols u) (
+            (filter (\u -> elem (length [v | v <- adjacentCell u, elem v lives]) [2, 3]) lives) ++
+            (filter (\u -> length [v | v <- adjacentCell u, elem v lives] == 3) (breathFirstSearch lives))
+        )
     )
 
 -- | @param (nrows, ncols, cells): A state
@@ -204,10 +213,11 @@ cellsFromTxt mss = (
 -- | @return: Nothing, just print the state from current state to the end, at most 1000 steps
 printStates step (nrows, ncols, cells) = do
     print cells
-    if step < 1000 then
-        do printStates (step + 1) (nextState (nrows, ncols, cells))
-    else 
-        do print "Complete"
+    printStates (step + 1) (nextState (nrows, ncols, cells))
+    -- if step < 1000 then
+    --     do printStates (step + 1) (nextState (nrows, ncols, cells))
+    -- else 
+    --     do print "Complete"
 
 -- | @param args: A list containing the command-line arguments of main program
 -- | @return: An Maybe object that whether the program is in debug mode or not (Nothing means not)
