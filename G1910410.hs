@@ -7,9 +7,13 @@ import Graphics.Gloss
 import Graphics.Gloss.Data.ViewPort
 
 
--- | Computer graphic - Geometric layer 
-type MyPoint = (Float, Float)
+-- | -------------------------------------------------
+-- | LAYER 1: COMPUTER GRAPHIC - GEOMETRIC COMPUTATION
+-- | -------------------------------------------------
 
+-- | This data structure stores an point on Oxy coordinate
+-- | @arg: (x-coordinate value, y-coordinate value)
+type MyPoint = (Float, Float)
 
 -- | @return: Size of a square cell in integer
 squareCellSizeInt :: Int
@@ -33,7 +37,7 @@ squareGap = 2
 -- |   |             |              |        
 -- | --|--> x   ->   |         ->   |        
 -- |   |             |              v (y)
-originTranslation:: Float -> Float -> MyPoint -> MyPoint
+originTranslation :: Float -> Float -> MyPoint -> MyPoint
 originTranslation maxX maxY (x, y) = (x + (-maxX / 2), - (y + (-maxY / 2)))
 
 -- | @param v: The origin point value on one-dimention axis
@@ -64,47 +68,158 @@ cellSquare maxX maxY (x, y) = [
 box :: Float -> Float -> MyPoint -> Color -> Picture
 box maxX maxY (x, y) c = Color c (Polygon (cellSquare maxX maxY (x, y)))
 
--- | @arg: (Number of rows, Number of columns, Live/Dead Cells)
-type State = (Int, Int, [[Bool]])
+-- | ------------------
+-- | THE END OF LAYER 1
+-- | ------------------
 
--- | Draw a state
-draw :: State -> Picture
-draw (nrows, ncols, bss) =
-    Pictures [
-        box maxX maxY (x, y) (if b then red else blue) | let maxX = (fromIntegral ncols) * squareCellSize,
-                                                         let maxY = (fromIntegral nrows) * squareCellSize,
-                                                         (i, bs) <- zip [0..] bss,
-                                                         (j, b)  <- zip [0..] bs,
-                                                         let x = fromIntegral j,
-                                                         let y = fromIntegral i 
+
+-- | -----------------------------------------------
+-- | LAYER 2: CELL LEVEL - GRAPH THEORY ON GAMEBOARD
+-- | -----------------------------------------------
+
+-- | This data structure stores position of a cell on gameboard
+-- | @arg: (Row index, Column index)
+type CellPosition = (Int, Int)
+
+-- | @return: A list representing eight unit directions, 
+-- |          which are correspondently up, right, down, left, up-right, down-right, down-left, up-left
+-- | 8    1    5
+-- |  \   |   /
+-- |    \ | /
+-- | 4 ---x--- 2
+-- |    / | \
+-- |  /   |   \
+-- | 7    3    6
+adjacentEight :: [Int]
+adjacentEight = [-1, 0, 1, 0, -1, 1, 1, -1, -1]
+
+-- | @param (i, j): Row and colum index of the cell
+-- | @param ds: List of unit directions
+-- | @return: List of cells after moving according to the unit directions
+adjacentMove :: CellPosition -> [Int] -> [CellPosition]
+adjacentMove (i, j) []             = []
+adjacentMove (i, j) (d : [])       = []
+adjacentMove (i, j) (di : dj : ds) = (i + di, j + dj) : adjacentMove (i, j) (dj : ds)
+
+-- | @param xs: A list
+-- | @return: List `xs` without duplicated elements
+dupRm :: Eq a => [a] -> [a]
+dupRm []       = []
+dupRm (x : xs) = x : dupRm [ y | y <- xs, y /= x ]
+
+-- | @params (i, j): Row and column index
+-- | @return: Cells that are adjacent to cell (i, j)
+adjacentCell :: CellPosition -> [CellPosition]
+adjacentCell (i, j) = adjacentMove (i, j) adjacentEight
+
+-- | @param visited: Visited cells
+-- | @return adjacents: Adjacent cells of visit cells
+breathFirstSearch :: [CellPosition] -> [CellPosition]
+breathFirstSearch visited = dupRm [
+        v | u <- visited,
+            v <- adjacentCell u,
+            not (elem v visited)
     ]
 
--- | Change from a state to another state, known ViewPort, amount of time for this simulation step and current state
-next :: ViewPort -> Float -> State -> State
-next _ _ (nrows, ncols, bss) = (nrows, ncols, [ 
-    [ not b | b <- bs ] | bs <- bss 
-  ])
+-- | ------------------
+-- | THE END OF LAYER 2
+-- | ------------------
 
--- | New window (Display)
+
+-- | ------------------------------
+-- | LAYER 3: GAME STATE TRANSITION
+-- | ------------------------------
+
+-- | This data structure used to store the current state of the game of life
+-- | by storing list of live cells positions in form of (i-th row, j-th column), 
+-- | and also store the size of gameboard by number of rows and number of columns
+ 
+-- | @arg: (Number of rows, Number of columns, Live cells)
+type State = (Int, Int, [CellPosition])
+
+-- | @param (nrows, ncols, lives): The current state
+-- | @return: The state after this state
+nextState :: State -> State
+nextState (nrows, ncols, lives) = (
+        nrows, 
+        ncols,
+        (filter (\u -> elem (length [v | v <- adjacentCell u, elem v lives]) [2, 3]) lives) ++
+        (filter (\u -> length [v | v <- adjacentCell u, elem v lives] == 3) (breathFirstSearch lives))
+    )
+
+-- | @param (nrows, ncols, cells): A state
+-- | @return: Picture of current state
+-- | Note: Row axis in the table is y-axis, while column axis is x-axis
+draw :: State -> Picture
+draw (nrows, ncols, cells) = 
+    Pictures [
+        box 
+            ((fromIntegral ncols) * squareCellSize) 
+            ((fromIntegral nrows) * squareCellSize) 
+            (fromIntegral j, fromIntegral i) 
+            (if (elem (i, j) cells) then red else blue) | i <- [0 .. (nrows-1)],
+                                                          j <- [0 .. (ncols-1)]
+    ]
+
+-- | @param _: ViewPort *not be used in this implementation*
+-- | @param _: Amount of time for this simulation *not be used in this implementation*
+-- | @param state: The current state
+-- | @return: The state after this state
+next :: ViewPort -> Float -> State -> State
+next _ _ state  = nextState state
+
+-- | @param nrows: Number of rows of gameboard
+-- | @param ncols: Number of columns of gameboard
+-- | @return: A window for the gameboard of `nrows` rows and `ncols` colums
+window :: Int -> Int -> Display
 window nrows ncols = InWindow "Game of Life" (ncols * squareCellSizeInt, nrows * squareCellSizeInt) (100, 100)
 
--- | Frames per second
+-- | @return: Number of frames per second
 fps :: Int
-fps = 1
+fps = 2
 
+-- | @param c: Input character
+-- | @return: True whether `c` is character presenting a live cell which is '#'
 isLiveCharacter :: Char -> Bool
-isLiveCharacter v = v == '#'
+isLiveCharacter c = c == '#'
 
+-- | @param mss: A state presented by text matrix
+-- | @return: A state corresponding to the text
 cellsFromTxt :: [[Char]] -> State
 cellsFromTxt mss = (
         length mss,
         foldl max 0 [length ms | ms <- mss],
-        [ [ isLiveCharacter v | v <- ms ] | ms <- mss ]
+        [(i, j) | (i, ms) <- zip [0..] mss,
+                  (j, m) <- zip [0..] ms,
+                  isLiveCharacter m]
     )
 
+-- | ------------------
+-- | THE END OF LAYER 3
+-- | ------------------
+
+
+-- | @param step: The current step
+-- | @param state: The current state
+-- | @return: Nothing, just print the state from current state to the end, at most 1000 steps
+printStates step (nrows, ncols, cells) = do
+    print cells
+    if step < 1000 then
+        do printStates (step + 1) (nextState (nrows, ncols, cells))
+    else 
+        do print "Complete"
+
+-- | @param args: A list containing the command-line arguments of main program
+-- | @return: An Maybe object that whether the program is in debug mode or not (Nothing means not)
+isDebugMode []                     = Nothing
+isDebugMode (x : _) | x == "DEBUG" = Just x
+                    | otherwise    = Nothing
+
 main = do
-    file : _ <- getArgs
+    file : otherArgs <- getArgs
     text <- readFile file
-    let (nrows, ncols, bss) = cellsFromTxt (lines text)
-    simulate (window nrows ncols) (dark white) fps (nrows, ncols, bss) draw next
+    let (nrows, ncols, cells) = cellsFromTxt (lines text)
+    case isDebugMode otherArgs of 
+        Just _ -> printStates 0 (nrows, ncols, cells)
+        Nothing -> simulate (window nrows ncols) (dark white) fps (nrows, ncols, cells) draw next
 
