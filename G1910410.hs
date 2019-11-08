@@ -77,7 +77,7 @@ box maxX maxY (x, y) c = Color c (Polygon (cellSquare maxX maxY (x, y)))
 -- | LAYER 2: CELL LEVEL - GRAPH THEORY ON GAMEBOARD
 -- | -----------------------------------------------
 
--- | This data structure stores position of a cell on gameboard
+-- | This data structure stores position of a cell on gameboard (torus plane)
 -- | @arg: (Row index, Column index)
 type CellPosition = (Int, Int)
 
@@ -93,6 +93,19 @@ type CellPosition = (Int, Int)
 adjacentEight :: [Int]
 adjacentEight = [-1, 0, 1, 0, -1, 1, 1, -1, -1]
 
+-- | @param nrows: Number of rows of gameboard
+-- | @param ncols: Number of columns of gameboard
+-- | @param (i, j): The position of a cell
+-- | @return: The position in torus plane
+torusMap :: Int -> Int -> CellPosition -> CellPosition
+torusMap nrows ncols (i, j) = (((i `mod` nrows) + nrows) `mod` nrows, ((j `mod` ncols) + ncols) `mod` ncols)
+
+-- | @param xs: A list
+-- | @return: List `xs` without duplicated elements
+dupRm :: Eq a => [a] -> [a]
+dupRm []       = []
+dupRm (x : xs) = x : dupRm [ y | y <- xs, y /= x ]
+
 -- | @param (i, j): Row and colum index of the cell
 -- | @param ds: List of unit directions
 -- | @return: List of cells after moving according to the unit directions
@@ -101,23 +114,21 @@ adjacentMove (i, j) []             = []
 adjacentMove (i, j) (d : [])       = []
 adjacentMove (i, j) (di : dj : ds) = (i + di, j + dj) : adjacentMove (i, j) (dj : ds)
 
--- | @param xs: A list
--- | @return: List `xs` without duplicated elements
-dupRm :: Eq a => [a] -> [a]
-dupRm []       = []
-dupRm (x : xs) = x : dupRm [ y | y <- xs, y /= x ]
-
--- | @params (i, j): Row and column index
+-- | @param nrows: Number of rows 
+-- | @param ncols: Number of cols
+-- | @param (i, j): Row and column index
 -- | @return: Cells that are adjacent to cell (i, j)
-adjacentCell :: CellPosition -> [CellPosition]
-adjacentCell (i, j) = adjacentMove (i, j) adjacentEight
+adjacentCell :: Int -> Int -> CellPosition -> [CellPosition]
+adjacentCell nrows ncols (i, j) = dupRm (map (\u -> torusMap nrows ncols u) (adjacentMove (i, j) adjacentEight))
 
+-- | @param nrows: Number of rows 
+-- | @param ncols: Number of cols
 -- | @param visited: Visited cells
--- | @return adjacents: Adjacent cells of visit cells
-breathFirstSearch :: [CellPosition] -> [CellPosition]
-breathFirstSearch visited = dupRm [
+-- | @return adjacents: Adjacent cells of visit cells (may dupplicate)
+breathFirstSearch :: Int -> Int -> [CellPosition] -> [CellPosition]
+breathFirstSearch nrows ncols visited = dupRm [
         v | u <- visited,
-            v <- adjacentCell u,
+            v <- adjacentCell nrows ncols u,
             not (elem v visited)
     ]
 
@@ -137,12 +148,19 @@ breathFirstSearch visited = dupRm [
 -- | @arg: (Number of rows, Number of columns, Live cells)
 type State = (Int, Int, [CellPosition])
 
--- | @param nrows: Number of rows of gameboard
--- | @param ncols: Number of columns of gameboard
--- | @param (i, j): The position of a cell
--- | @return: True if the cell is in valid position
-heuristicCellValidate :: Int -> Int -> CellPosition -> Bool
-heuristicCellValidate nrows ncols (i, j) = i >= (-100) && i < (nrows + 100) && j >= (-100) && j < (ncols + 100)
+-- | @param (nrows, ncols, lives): The current state
+-- | @return: The cells which is living and will continue living in next state
+-- |          These cells are cells that have exactly 2 or 3 living neighbours
+livesRemain :: State -> [CellPosition]
+livesRemain (nrows, ncols, lives) = 
+    filter (\u -> elem (length [v | v <- adjacentCell nrows ncols u, elem v lives]) [2, 3]) lives
+
+-- | @param (nrows, ncols, lives): The current state
+-- | @return: The cells which is not living but will be born in next state
+-- |          These cells are cells that have exactly 3 living neighbours
+newBorn :: State -> [CellPosition]
+newBorn (nrows, ncols, lives) = 
+    filter (\u -> length [v | v <- adjacentCell nrows ncols u, elem v lives] == 3) (breathFirstSearch nrows ncols lives)
 
 -- | @param (nrows, ncols, lives): The current state
 -- | @return: The state after this state
@@ -150,10 +168,7 @@ nextState :: State -> State
 nextState (nrows, ncols, lives) = (
         nrows, 
         ncols,
-        filter (\u -> heuristicCellValidate nrows ncols u) (
-            (filter (\u -> elem (length [v | v <- adjacentCell u, elem v lives]) [2, 3]) lives) ++
-            (filter (\u -> length [v | v <- adjacentCell u, elem v lives] == 3) (breathFirstSearch lives))
-        )
+        livesRemain (nrows, ncols, lives) ++ newBorn (nrows, ncols, lives)
     )
 
 -- | @param (nrows, ncols, cells): A state
@@ -214,10 +229,6 @@ cellsFromTxt mss = (
 printStates step (nrows, ncols, cells) = do
     print cells
     printStates (step + 1) (nextState (nrows, ncols, cells))
-    -- if step < 1000 then
-    --     do printStates (step + 1) (nextState (nrows, ncols, cells))
-    -- else 
-    --     do print "Complete"
 
 -- | @param args: A list containing the command-line arguments of main program
 -- | @return: An Maybe object that whether the program is in debug mode or not (Nothing means not)
