@@ -1,6 +1,6 @@
--- | Student Name: Nguyen Quoc Huy
--- | Student Number: 1910410
--- | Acknowledgement: 
+-- | name: Nguyen Quoc Huy
+-- | id: 1910410
+-- | acknowledgements: 
 
 import System.Environment
 import Graphics.Gloss
